@@ -363,7 +363,9 @@ class MiniSocietyEnv:
                 }
             )
             self._apply_pairwise_reputation_update(agent_a, agent_b, action_a, action_b)
-            self._gossip_blend(agent_a, agent_b)
+            # Agents only exchange third-party trust information after mutual cooperation.
+            if action_a == 1 and action_b == 1:
+                self._gossip_blend(agent_a, agent_b)
 
         reputation, confidence = self.trust_snapshot()
 

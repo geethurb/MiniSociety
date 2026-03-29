@@ -60,7 +60,37 @@ class MiniSocietyTests(unittest.TestCase):
         self.assertAlmostEqual(float(env.states[0].trust_matrix[1, 1]), 1.0, places=6)
         self.assertAlmostEqual(float(env.states[1].trust_matrix[0, 1]), 1.0, places=6)
 
-    def test_interaction_step_applies_direct_and_partner_trust_updates(self) -> None:
+    def test_mutual_cooperation_shares_partner_trust_matrix(self) -> None:
+        env = ms.MiniSocietyEnv(
+            n_agents=3,
+            confidence_decay=0.0,
+            gossip_noise=0.0,
+            gossip_strength=0.5,
+            initial_confidence=0.1,
+            confidence_gain_interaction=1.0,
+            device="cpu",
+        )
+        env.states[0].trust_matrix[2] = env.states[0].trust_matrix[2].new_tensor([-0.4, 0.1])
+        env.states[1].trust_matrix[2] = env.states[1].trust_matrix[2].new_tensor([0.8, 0.9])
+
+        env._resolve_step(
+            pairs=[(0, 1)],
+            proposals=[1, 0, 3],
+            responses=[1, 0, 3],
+            play_actions={0: 1, 1: 1},
+        )
+
+        # Direct interaction with agent 1 is still the strongest evidence.
+        self.assertAlmostEqual(float(env.states[0].trust_matrix[1, 0]), 0.15, places=6)
+        self.assertAlmostEqual(float(env.states[0].trust_matrix[1, 1]), 1.0, places=6)
+
+        # Agent 1's opinion of agent 2 is incorporated only because both cooperated.
+        self.assertGreater(float(env.states[0].trust_matrix[2, 0]), -0.4)
+        self.assertLess(float(env.states[0].trust_matrix[2, 0]), 0.8)
+        self.assertGreater(float(env.states[0].trust_matrix[2, 1]), 0.1)
+        self.assertLess(float(env.states[0].trust_matrix[2, 1]), float(env.states[0].trust_matrix[1, 1]))
+
+    def test_any_defection_blocks_partner_trust_matrix_sharing(self) -> None:
         env = ms.MiniSocietyEnv(
             n_agents=3,
             confidence_decay=0.0,
@@ -80,15 +110,13 @@ class MiniSocietyTests(unittest.TestCase):
             play_actions={0: 1, 1: 0},
         )
 
-        # Direct interaction with agent 1 is the strongest evidence.
+        # Direct partner update still happens.
         self.assertAlmostEqual(float(env.states[0].trust_matrix[1, 0]), -0.35, places=6)
         self.assertAlmostEqual(float(env.states[0].trust_matrix[1, 1]), 1.0, places=6)
 
-        # Agent 1's opinion of agent 2 is also incorporated, but with lower confidence.
-        self.assertGreater(float(env.states[0].trust_matrix[2, 0]), -0.4)
-        self.assertLess(float(env.states[0].trust_matrix[2, 0]), 0.8)
-        self.assertGreater(float(env.states[0].trust_matrix[2, 1]), 0.1)
-        self.assertLess(float(env.states[0].trust_matrix[2, 1]), float(env.states[0].trust_matrix[1, 1]))
+        # Third-party beliefs do not change because trust matrices were not shared.
+        self.assertAlmostEqual(float(env.states[0].trust_matrix[2, 0]), -0.4, places=6)
+        self.assertAlmostEqual(float(env.states[0].trust_matrix[2, 1]), 0.1, places=6)
 
     def test_observation_includes_targets_view_of_observer(self) -> None:
         env = ms.MiniSocietyEnv(n_agents=3, device="cpu")
